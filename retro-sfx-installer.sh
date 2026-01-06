@@ -566,6 +566,14 @@ write_ctl() {
     echo "ERROR: retro-sfxctl.py not found in installer directory" >&2
     exit 1
   fi
+  
+  # Create wrapper script at /usr/local/bin/retro-sfxctl (without .py)
+  # This allows users to call "retro-sfxctl" instead of "retro-sfxctl.py"
+  cat > "/usr/local/bin/retro-sfxctl" <<EOF
+#!/usr/bin/env bash
+exec /usr/bin/python3 "$CTL_PATH" "\$@"
+EOF
+  chmod 0755 "/usr/local/bin/retro-sfxctl"
 }
 
 write_ctl_old() {
