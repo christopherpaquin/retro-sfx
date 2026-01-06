@@ -82,13 +82,16 @@ The daemon supports **4 distinct sound profiles** (WOPR, Mainframe, Alien Termin
 
 ### 📞 Modem
 **Classic dial-up modem connection sounds**
-- Dial tones (350Hz + 440Hz) and DTMF dialing sequences
-- Handshake negotiation sounds (v.90/v.92 style)
-- Connection establishment sequences
-- Data transmission beeps
-- Failed connection attempts
-- Interval: 1-4 seconds between patterns
-- Authentic 56k modem experience
+- **Dial tones** (350Hz + 440Hz) and DTMF dialing sequences (variations 0, 6)
+- **Handshake negotiation** sounds - initial and quick handshakes (variations 1, 5)
+- **Connection negotiation** (v.90/v.92 style) - frequency sweeps (variation 2)
+- **Connection establishment** sequences - long connection sequences (variation 4)
+- **Data transmission** beeps - rapid beep sequences (variation 3)
+- **Modem carrier tones** - high-frequency carrier signals (variation 7)
+- **Connection established** - data flow sounds (variation 8)
+- **Failed connection** attempts - descending tones (variation 9)
+- **Default interval**: ~1-4 seconds between patterns (configurable: 1-100 minutes)
+- Authentic 56k modem experience with 10 unique variations
 
 ### 🎵 Sound Files (Additional Playback Mode)
 **Play random audio files from a directory**

@@ -61,6 +61,7 @@ Profiles:
   aliensterm - Sci-fi terminal sounds
   modem      - Dial-up modem connection sounds
   all        - Test all profiles sequentially
+  soundfile  - Test random sound file playback (from sounds directory)
 
 Options:
   -r, --repeat N    Repeat test N times (default: 1)
@@ -73,6 +74,8 @@ Examples:
   $0 audio all
   $0 audio wopr -r 3
   $0 audio modem -v 1.5
+  $0 audio soundfile        # Test sound file playback
+  $0 pcspkr soundfile       # Test sound file as PC speaker beeps
   $0 list
 EOF
   exit 1
@@ -85,6 +88,7 @@ Available Profiles:
   mainframe  - Slow, low, ambient computer-room noises
   aliensterm - Higher-pitched, eerie sci-fi terminal tones
   modem      - Classic dial-up modem connection sounds
+  soundfile  - Random sound file playback (from sounds directory)
 
 Each profile has 10 variations that play randomly.
 EOF
@@ -152,10 +156,10 @@ case "$OUTPUT" in
 esac
 
 case "$PROFILE" in
-  wopr|mainframe|aliensterm|modem|all) ;;
+  wopr|mainframe|aliensterm|modem|all|soundfile) ;;
   *) 
     echo "ERROR: Invalid profile '$PROFILE'" >&2
-    echo "Valid profiles: wopr, mainframe, aliensterm, modem, all" >&2
+    echo "Valid profiles: wopr, mainframe, aliensterm, modem, all, soundfile" >&2
     usage
     ;;
 esac
@@ -455,6 +459,88 @@ test_modem() {
   b 1000 30; b 1200 30; b 1400 30; b 1600 30
 }
 
+test_soundfile() {
+  echo "Testing SOUND FILE playback..."
+  
+  # Check for sounds directory
+  SOUNDS_DIR=""
+  if [[ -d "./sounds" ]]; then
+    SOUNDS_DIR="./sounds"
+  elif [[ -d "/usr/local/share/retro-sfx/sounds" ]]; then
+    SOUNDS_DIR="/usr/local/share/retro-sfx/sounds"
+  else
+    echo "ERROR: Sounds directory not found!" >&2
+    echo "  Expected: ./sounds or /usr/local/share/retro-sfx/sounds" >&2
+    echo "  Create a 'sounds' directory and add audio files (MP3, WAV, OGG, etc.)" >&2
+    return 1
+  fi
+  
+  # Find sound files
+  SOUND_EXTENSIONS=("mp3" "wav" "ogg" "flac" "m4a" "aac")
+  SOUND_FILES=()
+  
+  for ext in "${SOUND_EXTENSIONS[@]}"; do
+    while IFS= read -r -d '' file; do
+      SOUND_FILES+=("$file")
+    done < <(find "$SOUNDS_DIR" -maxdepth 1 -type f -iname "*.${ext}" -print0 2>/dev/null)
+  done
+  
+  if [[ ${#SOUND_FILES[@]} -eq 0 ]]; then
+    echo "ERROR: No sound files found in $SOUNDS_DIR" >&2
+    echo "  Supported formats: MP3, WAV, OGG, FLAC, M4A, AAC" >&2
+    return 1
+  fi
+  
+  # Pick a random file
+  RANDOM_FILE="${SOUND_FILES[$((RANDOM % ${#SOUND_FILES[@]}))]}"
+  FILE_NAME=$(basename "$RANDOM_FILE")
+  
+  echo "Selected file: $FILE_NAME"
+  echo "Playing through $OUTPUT mode..."
+  
+  if [[ "$OUTPUT" == "pcspkr" ]]; then
+    # Convert to beep pattern (same logic as daemon)
+    echo "Converting to PC speaker beep pattern..."
+    FILE_HASH=$(echo -n "$RANDOM_FILE" | md5sum | cut -d' ' -f1)
+    DURATION=10.0  # Test with 10 seconds
+    NUM_BEEPS=$((5 + $(echo "$DURATION * 2" | bc | cut -d. -f1)))
+    NUM_BEEPS=$((NUM_BEEPS < 5 ? 5 : (NUM_BEEPS > 15 ? 15 : NUM_BEEPS)))
+    SEGMENT_DURATION=$(echo "$DURATION * 1000 / $NUM_BEEPS" | bc | cut -d. -f1)
+    
+    for i in $(seq 0 $((NUM_BEEPS - 1))); do
+      OFFSET=$((i * 2))
+      HASH_VAL=$(echo "$FILE_HASH" | cut -c$((OFFSET + 1))-$((OFFSET + 2)))
+      HASH_DEC=$((0x${HASH_VAL:-50}))
+      FREQ=$((200 + (HASH_DEC * 1800 / 255)))
+      DUR=$((SEGMENT_DURATION + (HASH_DEC % 150)))
+      DUR=$((DUR < 50 ? 50 : (DUR > 200 ? 200 : DUR)))
+      echo "  Beep $((i + 1))/$NUM_BEEPS: ${FREQ}Hz for ${DUR}ms"
+      b "$FREQ" "$DUR"
+      sleep 0.05
+    done
+  else
+    # Play actual audio file
+    if command -v ffplay >/dev/null 2>&1; then
+      echo "Playing with ffplay (10 second limit)..."
+      timeout 11 ffplay -nodisp -autoexit -loglevel quiet -t 10 "$RANDOM_FILE" 2>/dev/null || true
+    elif command -v mpg123 >/dev/null 2>&1 && [[ "$RANDOM_FILE" =~ \.(mp3|MP3)$ ]]; then
+      echo "Playing with mpg123 (10 second limit)..."
+      timeout 11 mpg123 -q -g 100 "$RANDOM_FILE" 2>/dev/null || true
+    elif command -v paplay >/dev/null 2>&1; then
+      echo "Playing with paplay (10 second limit)..."
+      timeout 11 paplay "$RANDOM_FILE" 2>/dev/null || true
+    elif command -v aplay >/dev/null 2>&1 && [[ "$RANDOM_FILE" =~ \.(wav|WAV)$ ]]; then
+      echo "Playing with aplay (10 second limit)..."
+      timeout 11 aplay "$RANDOM_FILE" 2>/dev/null || true
+    else
+      echo "ERROR: No audio player found (ffplay, mpg123, paplay, or aplay)" >&2
+      return 1
+    fi
+  fi
+  
+  echo "Sound file playback test complete."
+}
+
 # -------------------------
 # Run test
 # -------------------------
@@ -517,6 +603,7 @@ run_test() {
       mainframe)  test_mainframe ;;
       aliensterm) test_aliensterm ;;
       modem)      test_modem ;;
+      soundfile)  test_soundfile ;;
     esac
     
     if [[ $i -lt $count ]]; then
@@ -538,6 +625,9 @@ if [[ "$PROFILE" == "all" ]]; then
     sleep 1
   done
   echo "All profiles tested."
+elif [[ "$PROFILE" == "soundfile" ]]; then
+  # Sound file test doesn't use repeat (it picks a random file each time)
+  test_soundfile
 else
   run_test "$PROFILE" "$REPEAT"
 fi
