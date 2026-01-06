@@ -225,6 +225,7 @@ def set_variations(profile: str, variations: str):
     
     key = f"{profile.upper()}_ENABLED_VARIATIONS"
     update_config(key, variations)
+    print(f"Set {profile} enabled variations: {variations}")
 
 
 def set_interval(profile: str, min_minutes: float, max_minutes: float):
@@ -249,6 +250,7 @@ def set_interval(profile: str, min_minutes: float, max_minutes: float):
     key_max = f"{profile.upper()}_INTERVAL_MAX"
     update_config(key_min, str(min_minutes))
     update_config(key_max, str(max_minutes))
+    print(f"Set {profile} interval: {min_minutes}-{max_minutes} minutes between patterns")
 
 
 def set_beeps(profile: str, min_beeps: int, max_beeps: int):
@@ -273,6 +275,81 @@ def set_beeps(profile: str, min_beeps: int, max_beeps: int):
     key_max = f"{profile.upper()}_BEEPS_MAX"
     update_config(key_min, str(min_beeps))
     update_config(key_max, str(max_beeps))
+    print(f"Set {profile} beep count: {min_beeps}-{max_beeps} beeps per pattern")
+
+
+def show_beeps(profile: str):
+    """Show current beep count range for a profile"""
+    key_min = f"{profile.upper()}_BEEPS_MIN"
+    key_max = f"{profile.upper()}_BEEPS_MAX"
+    
+    # Default values
+    min_beeps = "1"
+    max_beeps = "6"
+    
+    # Read from config file
+    if CONF_FILE.exists():
+        with open(CONF_FILE, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith(f"{key_min}="):
+                    min_beeps = line.split("=", 1)[1].strip().strip('"')
+                elif line.startswith(f"{key_max}="):
+                    max_beeps = line.split("=", 1)[1].strip().strip('"')
+    
+    print(f"{profile} beep count: {min_beeps}-{max_beeps} beeps per pattern")
+
+
+def set_sounds_enabled(enabled: bool):
+    """Enable or disable sound file playback"""
+    value = "1" if enabled else "0"
+    update_config("SOUNDS_ENABLED", value)
+    state = "enabled" if enabled else "disabled"
+    print(f"Sound file playback {state}")
+
+
+def set_sounds_dir(directory: str):
+    """Set sounds directory path"""
+    from pathlib import Path
+    sounds_path = Path(directory)
+    if not sounds_path.exists() or not sounds_path.is_dir():
+        print(f"WARNING: Directory '{directory}' does not exist or is not a directory", file=sys.stderr)
+    update_config("SOUNDS_DIR", directory)
+    print(f"Set sounds directory: {directory}")
+
+
+def set_sounds_duration(min_seconds: float, max_seconds: float):
+    """Set sound file playback duration range (1-30 seconds)"""
+    if not (1.0 <= min_seconds <= 30.0):
+        print(f"ERROR: Minimum duration must be between 1 and 30 seconds", file=sys.stderr)
+        sys.exit(2)
+    if not (1.0 <= max_seconds <= 30.0):
+        print(f"ERROR: Maximum duration must be between 1 and 30 seconds", file=sys.stderr)
+        sys.exit(2)
+    if min_seconds > max_seconds:
+        print(f"ERROR: Minimum duration must be <= maximum duration", file=sys.stderr)
+        sys.exit(2)
+    
+    update_config("SOUNDS_DURATION_MIN", str(min_seconds))
+    update_config("SOUNDS_DURATION_MAX", str(max_seconds))
+    print(f"Set sound file duration: {min_seconds}-{max_seconds} seconds")
+
+
+def set_sounds_interval(min_minutes: float, max_minutes: float):
+    """Set interval between sound file plays (in minutes, 1-100)"""
+    if not (1.0 <= min_minutes <= 100.0):
+        print(f"ERROR: Minimum interval must be between 1 and 100 minutes", file=sys.stderr)
+        sys.exit(2)
+    if not (1.0 <= max_minutes <= 100.0):
+        print(f"ERROR: Maximum interval must be between 1 and 100 minutes", file=sys.stderr)
+        sys.exit(2)
+    if min_minutes > max_minutes:
+        print(f"ERROR: Minimum interval must be <= maximum interval", file=sys.stderr)
+        sys.exit(2)
+    
+    update_config("SOUNDS_INTERVAL_MIN", str(min_minutes))
+    update_config("SOUNDS_INTERVAL_MAX", str(max_minutes))
+    print(f"Set sound file interval: {min_minutes}-{max_minutes} minutes between plays")
 
 
 def main():
@@ -325,10 +402,10 @@ def main():
     interval_parser.add_argument('max_minutes', type=float, help='Maximum interval in minutes (1-100)')
     
     # Beeps command
-    beeps_parser = subparsers.add_parser('beeps', help='Set beep count range per pattern (1-20)')
+    beeps_parser = subparsers.add_parser('beeps', help='Set or show beep count range per pattern (1-20)')
     beeps_parser.add_argument('profile', choices=['wopr', 'mainframe', 'aliensterm', 'modem'], help='Profile name')
-    beeps_parser.add_argument('min_beeps', type=int, help='Minimum beeps per pattern (1-20)')
-    beeps_parser.add_argument('max_beeps', type=int, help='Maximum beeps per pattern (1-20)')
+    beeps_parser.add_argument('min_beeps', type=int, nargs='?', help='Minimum beeps per pattern (1-20). Omit to show current value.')
+    beeps_parser.add_argument('max_beeps', type=int, nargs='?', help='Maximum beeps per pattern (1-20). Omit to show current value.')
     
     # Sound files commands
     sounds_parser = subparsers.add_parser('sounds', help='Enable/disable sound file playback')
@@ -375,7 +452,10 @@ def main():
         elif args.command == 'interval':
             set_interval(args.profile, args.min_minutes, args.max_minutes)
         elif args.command == 'beeps':
-            set_beeps(args.profile, args.min_beeps, args.max_beeps)
+            if args.min_beeps is None or args.max_beeps is None:
+                show_beeps(args.profile)
+            else:
+                set_beeps(args.profile, args.min_beeps, args.max_beeps)
         elif args.command == 'sounds':
             set_sounds_enabled(args.state == 'on')
         elif args.command == 'sounds-dir':
