@@ -11,7 +11,12 @@
 
 *Bring the nostalgic beeps and boops of classic computing to your modern Linux system!*
 
-**Features 4 unique sound profiles** with 10 variations each, runtime control, quiet hours, and automatic hardware detection.
+**Features:**
+- 🎯 **4 Sound Profiles**: WOPR, Mainframe, Alien Terminal, Modem (10 variations each)
+- 🔊 **3 Output Modes**: PC speaker, external audio, or randomized mix
+- 🎵 **Sound File Playback**: Play random audio files (with PC speaker conversion)
+- ⚙️ **Fully Configurable**: Intervals (1-100 min), beep counts (1-20), variations, quiet hours
+- 🔄 **Runtime Control**: Change settings without restarting the service
 
 </div>
 
@@ -35,39 +40,44 @@
 
 | Feature | Description |
 |---------|-------------|
-| 🎯 **4 Sound Profiles** | WOPR, Mainframe, Alien Terminal, and Modem - switch at runtime |
-| 🔊 **Flexible Output** | PC speaker, external audio, or randomized mix |
-| ⏰ **Quiet Hours** | Scheduled silence during specified times |
+| 🎯 **4 Sound Profiles** | **WOPR**, **Mainframe**, **Alien Terminal**, and **Modem** - switch at runtime |
+| 🔊 **3 Output Modes** | **PC speaker** (piezo), **external audio** (speakers/headphones), or **randomized mix** |
+| 🎵 **Sound File Playback** | Play random sound files from directory (1-30s, **PC speaker compatible** - auto-converts to beeps) |
+| ⏰ **Quiet Hours** | Scheduled silence during specified times (configurable start/end) |
 | 🎚️ **Sound Selection** | Choose which sound variations (0-9) to use for each profile |
-| ⏱️ **Configurable Intervals** | Set pattern intervals from 1 to 100 minutes |
-| 🔢 **Beep Count Control** | Configure number of beeps per pattern (1-20) |
-| 🎵 **Sound File Playback** | Play random sound files from a directory (1-30 seconds, PC speaker compatible) |
+| ⏱️ **Configurable Intervals** | Set pattern intervals from 1 to 100 minutes per profile |
+| 🔢 **Beep Count Control** | Configure number of beeps per pattern (1-20) per profile |
 | 🛡️ **Audio Limiter** | Soft limiter to protect speakers from sudden spikes |
 | 🔄 **Live Control** | Change settings without restarting the service |
 | 🤖 **Auto-Detection** | Automatically detects available audio hardware |
 | 🚀 **Zero Config** | Works out of the box with sensible defaults |
-| 📊 **40 Variations** | 10 unique variations per profile for maximum variety |
+| 📊 **40+ Variations** | 10 unique variations per profile (4 profiles) + sound file playback |
 
 ---
 
 ## 🎵 Sound Profiles
 
+The daemon supports **4 distinct sound profiles** (WOPR, Mainframe, Alien Terminal, Modem), each with 10 unique variations. Additionally, **Sound File Playback** mode can play random audio files from a directory.
+
 ### 🎮 WOPR
 **Fast, chatty, WarGames-style console sounds**
-- High-frequency beeps and boops
+- High-frequency beeps and boops (200-2000 Hz)
 - Rapid sequences with variable timing
+- Interval: 0.2-1.5 seconds between patterns
 - Perfect for active terminal sessions
 
 ### 🖥️ Mainframe
 **Slow, low, ambient computer-room noises**
-- Deep, rumbling tones
+- Deep, rumbling tones (180-500 Hz)
 - Long pauses between sounds
+- Interval: 4-11 seconds between patterns
 - Ideal for background ambiance
 
 ### 👽 Alien Terminal
 **Higher-pitched, eerie sci-fi terminal tones**
 - Sci-fi movie inspired
-- Varied frequency ranges
+- Varied frequency ranges (600-2400 Hz)
+- Interval: 0.2-0.9 seconds between patterns
 - Mysterious and atmospheric
 
 ### 📞 Modem
@@ -77,9 +87,26 @@
 - Connection establishment sequences
 - Data transmission beeps
 - Failed connection attempts
+- Interval: 1-4 seconds between patterns
 - Authentic 56k modem experience
 
-Each profile has **10 variations** that can be selectively enabled via configuration!
+### 🎵 Sound Files (Additional Playback Mode)
+**Play random audio files from a directory**
+- Supports MP3, WAV, OGG, FLAC, M4A, AAC formats
+- Random file selection from configured directory
+- Playback duration: 1-30 seconds (configurable)
+- **PC Speaker Compatible**: Automatically converts to beep sequences (5-15 beeps per file)
+- Works alongside other profiles (10% chance per loop to play instead of pattern)
+- Interval: 1-100 minutes between plays (configurable)
+
+---
+
+> 💡 **Configuration Summary:**
+> - Each profile has **10 variations** (0-9) that can be selectively enabled
+> - All intervals are configurable: **1-100 minutes** per profile
+> - Beep counts are configurable: **1-20 beeps** per pattern
+> - Sound files can be enabled/disabled independently
+> - All settings apply instantly without service restart
 
 ---
 
@@ -133,6 +160,7 @@ The installer will:
 - ✅ Enable the `pcspkr` kernel module
 - ✅ Create configuration files
 - ✅ Install the daemon and control CLI
+- ✅ Copy `sounds/` directory to `/usr/local/share/retro-sfx/sounds` (if present)
 - ✅ Create and start the systemd service
 
 ### 📁 Installed Files
@@ -144,6 +172,7 @@ The installer will:
 | `/etc/retro-sfx.conf` | Main configuration file |
 | `/etc/systemd/system/retro-sfx.service` | systemd unit file |
 | `/run/retro-sfx/` | Runtime state (profile, enable flag) |
+| `/usr/local/share/retro-sfx/sounds/` | Sound files directory (if copied during install) |
 
 ### ✅ Verify Installation
 
@@ -464,6 +493,21 @@ Use the test script to verify audio output and test different profiles:
 ./retro-sfx-test.sh list
 ```
 
+#### Test Sound File Beep Patterns
+
+Test what sound files would sound like when converted to PC speaker beeps:
+
+```bash
+# Test a sound file's beep pattern (plays through speakers)
+python3 test-sound-beeps.py sounds/computer-beeps-232200.mp3
+
+# With custom duration
+python3 test-sound-beeps.py sounds/dial-up-modem-handshake-sound-effect-380364.mp3 10
+
+# Or use the bash script
+./test-sound-beeps.sh sounds/computer-beeps-232200.mp3
+```
+
 #### Test Script Options
 
 | Option | Description | Example |
@@ -489,6 +533,9 @@ sudo rm -f \
   /etc/retro-sfx.conf \
   /etc/systemd/system/retro-sfx.service
 
+# Optionally remove sounds directory
+sudo rm -rf /usr/local/share/retro-sfx
+
 # Reload systemd
 sudo systemctl daemon-reload
 ```
@@ -501,6 +548,7 @@ sudo systemctl daemon-reload
 - 🔒 **No network access**, no telemetry, no persistent data beyond config
 - 💻 Works best on **physical hardware** (PC speaker support)
 - 🎨 **4 profiles × 10 variations = 40 unique sound patterns**
+- 🎵 **Sound file support** - Play MP3/WAV/OGG files with automatic PC speaker conversion
 - ⚡ **Zero-downtime configuration** - changes apply instantly
 - 🎵 **Randomized timing** - each sound plays with variable frequency, duration, and pauses
 - 🔧 **Fully configurable** - quiet hours, variation selection, output modes
