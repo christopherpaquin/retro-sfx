@@ -7,9 +7,11 @@
 ![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-Stable-success?style=for-the-badge)
 
-**A lightweight Linux service that generates retro computer sounds—inspired by classic movie terminals and mainframes—using either the internal PC speaker, external speakers, or a random mix of both.**
+**A lightweight Linux service that generates retro computer sounds—inspired by classic movie terminals, mainframes, and dial-up modems—using either the internal PC speaker, external speakers, or a random mix of both.**
 
 *Bring the nostalgic beeps and boops of classic computing to your modern Linux system!*
+
+**Features 4 unique sound profiles** with 10 variations each, runtime control, quiet hours, and automatic hardware detection.
 
 </div>
 
@@ -25,6 +27,7 @@
 - [🎮 Usage](#-usage)
 - [🛠️ Troubleshooting](#️-troubleshooting)
 - [🗑️ Uninstall](#️-uninstall)
+- [📝 Notes](#-notes)
 
 ---
 
@@ -32,14 +35,18 @@
 
 | Feature | Description |
 |---------|-------------|
-| 🎯 **Multiple Profiles** | Switch between WOPR, Mainframe, and Alien Terminal sounds at runtime |
+| 🎯 **4 Sound Profiles** | WOPR, Mainframe, Alien Terminal, and Modem - switch at runtime |
 | 🔊 **Flexible Output** | PC speaker, external audio, or randomized mix |
 | ⏰ **Quiet Hours** | Scheduled silence during specified times |
-| 🎚️ **Sound Selection** | Choose which sound variations to use for each profile |
+| 🎚️ **Sound Selection** | Choose which sound variations (0-9) to use for each profile |
+| ⏱️ **Configurable Intervals** | Set pattern intervals from 1 to 100 minutes |
+| 🔢 **Beep Count Control** | Configure number of beeps per pattern (1-20) |
+| 🎵 **Sound File Playback** | Play random sound files from a directory (1-30 seconds, PC speaker compatible) |
 | 🛡️ **Audio Limiter** | Soft limiter to protect speakers from sudden spikes |
 | 🔄 **Live Control** | Change settings without restarting the service |
 | 🤖 **Auto-Detection** | Automatically detects available audio hardware |
 | 🚀 **Zero Config** | Works out of the box with sensible defaults |
+| 📊 **40 Variations** | 10 unique variations per profile for maximum variety |
 
 ---
 
@@ -62,6 +69,15 @@
 - Sci-fi movie inspired
 - Varied frequency ranges
 - Mysterious and atmospheric
+
+### 📞 Modem
+**Classic dial-up modem connection sounds**
+- Dial tones (350Hz + 440Hz) and DTMF dialing sequences
+- Handshake negotiation sounds (v.90/v.92 style)
+- Connection establishment sequences
+- Data transmission beeps
+- Failed connection attempts
+- Authentic 56k modem experience
 
 Each profile has **10 variations** that can be selectively enabled via configuration!
 
@@ -86,14 +102,26 @@ Each profile has **10 variations** that can be selectively enabled via configura
 
 ## 📦 Installation
 
-### 1. Clone or Download
+### Quick Start
+
+```bash
+# Download and install
+git clone <repository-url>
+cd retro-sfxctl
+chmod +x retro-sfx-installer.sh
+sudo ./retro-sfx-installer.sh
+```
+
+### Detailed Steps
+
+#### 1. Clone or Download
 
 ```bash
 git clone <repository-url>
 cd retro-sfxctl
 ```
 
-### 2. Run the Installer
+#### 2. Run the Installer
 
 ```bash
 chmod +x retro-sfx-installer.sh
@@ -111,11 +139,20 @@ The installer will:
 
 | Path | Purpose |
 |------|---------|
-| `/usr/local/bin/retro-sfxd.py` | Background daemon |
+| `/usr/local/bin/retro-sfxd.py` | Background daemon (Python) |
 | `/usr/local/bin/retro-sfxctl.py` | Runtime control CLI |
 | `/etc/retro-sfx.conf` | Main configuration file |
 | `/etc/systemd/system/retro-sfx.service` | systemd unit file |
 | `/run/retro-sfx/` | Runtime state (profile, enable flag) |
+
+### ✅ Verify Installation
+
+After installation, verify the service is running:
+
+```bash
+sudo systemctl status retro-sfx.service
+sudo retro-sfxctl status
+```
 
 ---
 
@@ -155,6 +192,39 @@ LIM_TARGET_DB=-3
 WOPR_ENABLED_VARIATIONS=all
 MAINFRAME_ENABLED_VARIATIONS=all
 ALIENSTERM_ENABLED_VARIATIONS=all
+MODEM_ENABLED_VARIATIONS=all
+
+# Interval between patterns (in minutes, range 1-100 minutes)
+# Format: PROFILE_INTERVAL_MIN and PROFILE_INTERVAL_MAX
+# Defaults shown (converted from original seconds)
+WOPR_INTERVAL_MIN=0.003
+WOPR_INTERVAL_MAX=0.025
+MAINFRAME_INTERVAL_MIN=0.067
+MAINFRAME_INTERVAL_MAX=0.183
+ALIENSTERM_INTERVAL_MIN=0.003
+ALIENSTERM_INTERVAL_MAX=0.015
+MODEM_INTERVAL_MIN=0.017
+MODEM_INTERVAL_MAX=0.067
+
+# Number of beeps per pattern run (range 1-20)
+# Format: PROFILE_BEEPS_MIN and PROFILE_BEEPS_MAX
+WOPR_BEEPS_MIN=1
+WOPR_BEEPS_MAX=6
+MAINFRAME_BEEPS_MIN=1
+MAINFRAME_BEEPS_MAX=2
+ALIENSTERM_BEEPS_MIN=1
+ALIENSTERM_BEEPS_MAX=4
+MODEM_BEEPS_MIN=1
+MODEM_BEEPS_MAX=6
+
+# Sound files playback
+# Enable/disable playing random sound files from a directory
+SOUNDS_ENABLED=0
+SOUNDS_DIR=/usr/local/share/retro-sfx/sounds
+SOUNDS_DURATION_MIN=5.0
+SOUNDS_DURATION_MAX=30.0
+SOUNDS_INTERVAL_MIN=1.0
+SOUNDS_INTERVAL_MAX=10.0
 ```
 
 > 🔄 **Changes apply automatically** - no service restart required!
@@ -162,6 +232,25 @@ ALIENSTERM_ENABLED_VARIATIONS=all
 ---
 
 ## 🎮 Usage
+
+### 🚀 Quick Examples
+
+```bash
+# Switch to WOPR profile (fast, chatty sounds)
+sudo retro-sfxctl profile wopr
+
+# Switch to Modem profile (dial-up sounds)
+sudo retro-sfxctl profile modem
+
+# Temporarily mute sounds
+sudo retro-sfxctl off
+
+# Re-enable sounds
+sudo retro-sfxctl on
+
+# Test a profile before switching
+./retro-sfx-test.sh audio modem
+```
 
 ### 🔍 Service Management
 
@@ -195,6 +284,7 @@ sudo retro-sfxctl off
 sudo retro-sfxctl profile wopr
 sudo retro-sfxctl profile mainframe
 sudo retro-sfxctl profile aliensterm
+sudo retro-sfxctl profile modem
 ```
 
 #### Set Output Mode
@@ -226,6 +316,33 @@ sudo retro-sfxctl quiet off
 sudo retro-sfxctl variations wopr "0,1,2,3"        # First 4 variations
 sudo retro-sfxctl variations mainframe "all"       # All variations
 sudo retro-sfxctl variations aliensterm "5,6,7,8,9" # Last 5 variations
+sudo retro-sfxctl variations modem "0,1,2,3,4"      # First 5 variations
+```
+
+#### Configure Pattern Intervals
+```bash
+# Set interval between patterns (in minutes, 1-100)
+# Example: WOPR to play every 1-5 minutes
+sudo retro-sfxctl interval wopr 1.0 5.0
+
+# Example: Mainframe to play every 10-30 minutes
+sudo retro-sfxctl interval mainframe 10.0 30.0
+
+# Example: Modem to play every 2-10 minutes
+sudo retro-sfxctl interval modem 2.0 10.0
+```
+
+#### Configure Beep Count
+```bash
+# Set number of beeps per pattern (1-20)
+# Example: WOPR to play 3-8 beeps per pattern
+sudo retro-sfxctl beeps wopr 3 8
+
+# Example: Mainframe to play 1-3 beeps per pattern
+sudo retro-sfxctl beeps mainframe 1 3
+
+# Example: Modem to play 2-5 beeps per pattern
+sudo retro-sfxctl beeps modem 2 5
 ```
 
 #### Audio Limiter
@@ -233,6 +350,24 @@ sudo retro-sfxctl variations aliensterm "5,6,7,8,9" # Last 5 variations
 sudo retro-sfxctl limiter on
 sudo retro-sfxctl limiter off
 ```
+
+#### Sound File Playback
+```bash
+# Enable/disable playing random sound files from sounds directory
+sudo retro-sfxctl sounds on
+sudo retro-sfxctl sounds off
+
+# Set sounds directory path
+sudo retro-sfxctl sounds-dir /path/to/sounds
+
+# Set playback duration (1-30 seconds)
+sudo retro-sfxctl sounds-duration 5.0 30.0
+
+# Set interval between sound file plays (1-100 minutes)
+sudo retro-sfxctl sounds-interval 5.0 20.0
+```
+
+> 💡 **PC Speaker Support:** When using PC speaker output mode, sound files are automatically converted to beep sequences. The system analyzes each audio file and generates representative beep patterns (5-15 beeps) that play through the piezo speaker, creating a retro-computer interpretation of the sound.
 
 ---
 
@@ -290,7 +425,9 @@ AUDIO_DEVICE=pipewire  # or pulse, hw:0,0, etc.
 
 ### 🧪 Testing Sounds
 
-Use the test script to verify audio output:
+Use the test script to verify audio output and test different profiles:
+
+#### Basic Usage
 
 ```bash
 # Test PC speaker
@@ -301,7 +438,40 @@ Use the test script to verify audio output:
 
 # Test alien terminal
 ./retro-sfx-test.sh audio aliensterm
+
+# Test modem sounds
+./retro-sfx-test.sh audio modem
 ```
+
+#### Advanced Options
+
+```bash
+# Test all profiles sequentially
+./retro-sfx-test.sh audio all
+
+# Repeat a test multiple times
+./retro-sfx-test.sh audio wopr -r 3
+./retro-sfx-test.sh audio modem --repeat 5
+
+# Adjust audio volume/gain
+./retro-sfx-test.sh audio modem -v 1.5
+./retro-sfx-test.sh audio wopr --volume 2.0
+
+# Combine options
+./retro-sfx-test.sh audio mainframe -r 2 -v 1.8
+
+# List all available profiles
+./retro-sfx-test.sh list
+```
+
+#### Test Script Options
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| `-r, --repeat N` | Repeat test N times | `-r 3` |
+| `-v, --volume GAIN` | Set audio gain (default: 1.2) | `-v 1.5` |
+| `all` | Test all profiles sequentially | `audio all` |
+| `list` | List available profiles | `list` |
 
 ---
 
@@ -329,9 +499,22 @@ sudo systemctl daemon-reload
 
 - 🎯 Designed for **labs, desks, NOCs, demos, and ambient fun**
 - 🔒 **No network access**, no telemetry, no persistent data beyond config
-- 💻 Works best on **physical hardware**
-- 🎨 Each sound profile has **10 variations** for maximum variety
+- 💻 Works best on **physical hardware** (PC speaker support)
+- 🎨 **4 profiles × 10 variations = 40 unique sound patterns**
 - ⚡ **Zero-downtime configuration** - changes apply instantly
+- 🎵 **Randomized timing** - each sound plays with variable frequency, duration, and pauses
+- 🔧 **Fully configurable** - quiet hours, variation selection, output modes
+
+## 🎯 Use Cases
+
+- **Home Lab**: Add ambient computing atmosphere
+- **Office/Desk**: Nostalgic background sounds
+- **Demos**: Showcase retro computing aesthetics
+- **NOC/Data Center**: Ambient monitoring sounds
+- **Gaming Setup**: Retro computing ambiance
+- **Server Room**: Authentic mainframe atmosphere
+
+---
 
 ---
 
@@ -340,5 +523,7 @@ sudo systemctl daemon-reload
 **Made with ❤️ for retro computing enthusiasts**
 
 *Bring the nostalgia of classic computing to your modern Linux system!*
+
+[Report Issues](https://github.com/your-repo/issues) • [Contributing](https://github.com/your-repo) • [License](LICENSE)
 
 </div>

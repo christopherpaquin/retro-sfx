@@ -5,7 +5,16 @@
 # Interactive test tool for Retro SFX
 # Tests:
 #   - Output: pcspkr | audio
-#   - Profiles: wopr | mainframe | aliensterm
+#   - Profiles: wopr | mainframe | aliensterm | modem | all
+#
+# Usage:
+#   $0 <output> <profile> [options]
+#   $0 <output> all        # Test all profiles
+#   $0 list                # List available profiles
+#
+# Options:
+#   -r, --repeat N        Repeat test N times (default: 1)
+#   -v, --volume GAIN     Set audio gain (default: 1.2)
 #
 # Requirements:
 #   - beep (pcspkr)
@@ -32,23 +41,110 @@ LIM_TARGET_DB="-3"
 # -------------------------
 # Helpers
 # -------------------------
+REPEAT=1
+VOLUME="$AUDIO_GAIN"
+
 usage() {
   cat <<EOF
 Usage:
-  $0 pcspkr <wopr|mainframe|aliensterm>
-  $0 audio  <wopr|mainframe|aliensterm>
+  $0 <output> <profile> [options]
+  $0 <output> all        # Test all profiles
+  $0 list                # List available profiles
+
+Output modes:
+  pcspkr    - PC speaker/piezo buzzer
+  audio     - External audio (speakers/headphones)
+
+Profiles:
+  wopr       - Fast, chatty WarGames-style sounds
+  mainframe  - Slow, ambient mainframe sounds
+  aliensterm - Sci-fi terminal sounds
+  modem      - Dial-up modem connection sounds
+  all        - Test all profiles sequentially
+
+Options:
+  -r, --repeat N    Repeat test N times (default: 1)
+  -v, --volume GAIN Set audio gain (default: 1.2)
 
 Examples:
   $0 pcspkr wopr
   $0 audio mainframe
+  $0 audio modem
+  $0 audio all
+  $0 audio wopr -r 3
+  $0 audio modem -v 1.5
+  $0 list
 EOF
   exit 1
 }
 
-[[ $# -eq 2 ]] || usage
+list_profiles() {
+  cat <<EOF
+Available Profiles:
+  wopr       - Fast, chatty WarGames-style console sounds
+  mainframe  - Slow, low, ambient computer-room noises
+  aliensterm - Higher-pitched, eerie sci-fi terminal tones
+  modem      - Classic dial-up modem connection sounds
 
-OUTPUT="$1"
-PROFILE="$2"
+Each profile has 10 variations that play randomly.
+EOF
+  exit 0
+}
+
+# Parse arguments
+if [[ $# -eq 0 ]]; then
+  usage
+fi
+
+# Handle list command
+if [[ "$1" == "list" ]]; then
+  list_profiles
+fi
+
+# Parse arguments - simple approach: first two args are output and profile
+# Then parse options
+OUTPUT=""
+PROFILE=""
+ARGS=()
+
+# Collect positional args and options
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -r|--repeat)
+      if [[ -z "${2:-}" ]]; then
+        echo "ERROR: --repeat requires a number" >&2
+        usage
+      fi
+      REPEAT="$2"
+      shift 2
+      ;;
+    -v|--volume)
+      if [[ -z "${2:-}" ]]; then
+        echo "ERROR: --volume requires a number" >&2
+        usage
+      fi
+      VOLUME="$2"
+      AUDIO_GAIN="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# Extract output and profile from positional args
+if [[ ${#ARGS[@]} -lt 2 ]]; then
+  echo "ERROR: Missing required arguments" >&2
+  usage
+fi
+
+OUTPUT="${ARGS[0]}"
+PROFILE="${ARGS[1]}"
 
 case "$OUTPUT" in
   pcspkr|audio) ;;
@@ -56,9 +152,19 @@ case "$OUTPUT" in
 esac
 
 case "$PROFILE" in
-  wopr|mainframe|aliensterm) ;;
-  *) usage ;;
+  wopr|mainframe|aliensterm|modem|all) ;;
+  *) 
+    echo "ERROR: Invalid profile '$PROFILE'" >&2
+    echo "Valid profiles: wopr, mainframe, aliensterm, modem, all" >&2
+    usage
+    ;;
 esac
+
+# Validate repeat count
+if ! [[ "$REPEAT" =~ ^[0-9]+$ ]] || [[ "$REPEAT" -lt 1 ]]; then
+  echo "ERROR: Repeat count must be a positive integer" >&2
+  exit 1
+fi
 
 # -------------------------
 # Detection functions
@@ -334,6 +440,21 @@ test_aliensterm() {
   b 2400 15; b 800 120
 }
 
+test_modem() {
+  echo "Testing MODEM profile..."
+  # Dial tone
+  b 350 100; b 440 100
+  sleep 0.2
+  # DTMF dialing
+  b 697 60; b 770 60; b 852 60; b 941 60
+  sleep 0.3
+  # Handshake sequence
+  b 600 60; b 900 50; b 1200 40; b 1500 30
+  sleep 0.4
+  # Connection established
+  b 1000 30; b 1200 30; b 1400 30; b 1600 30
+}
+
 # -------------------------
 # Run test
 # -------------------------
@@ -341,6 +462,12 @@ echo "--------------------------------"
 echo "Retro SFX Test"
 echo "Output : $OUTPUT"
 echo "Profile: $PROFILE"
+if [[ "$REPEAT" -gt 1 ]]; then
+  echo "Repeat : $REPEAT times"
+fi
+if [[ "$OUTPUT" == "audio" ]] && [[ "$VOLUME" != "1.2" ]]; then
+  echo "Volume : $VOLUME"
+fi
 
 # Check PC speaker availability and permissions
 if [[ "$OUTPUT" == "pcspkr" ]]; then
@@ -372,13 +499,50 @@ if [[ "$OUTPUT" == "audio" ]] || [[ "$OUTPUT" == "pcspkr" ]]; then
 fi
 
 echo "--------------------------------"
+echo ""
 
-case "$PROFILE" in
-  wopr)       test_wopr ;;
-  mainframe)  test_mainframe ;;
-  aliensterm) test_aliensterm ;;
-esac
+# Test function with repeat
+run_test() {
+  local profile="$1"
+  local count="$2"
+  local i=1
+  
+  while [[ $i -le $count ]]; do
+    if [[ $count -gt 1 ]]; then
+      echo "[$i/$count] "
+    fi
+    
+    case "$profile" in
+      wopr)       test_wopr ;;
+      mainframe)  test_mainframe ;;
+      aliensterm) test_aliensterm ;;
+      modem)      test_modem ;;
+    esac
+    
+    if [[ $i -lt $count ]]; then
+      echo ""
+      sleep 0.5
+    fi
+    i=$((i + 1))
+  done
+}
 
+# Run tests
+if [[ "$PROFILE" == "all" ]]; then
+  echo "Testing all profiles..."
+  echo ""
+  for profile in wopr mainframe aliensterm modem; do
+    echo ">>> Testing $profile profile"
+    run_test "$profile" 1
+    echo ""
+    sleep 1
+  done
+  echo "All profiles tested."
+else
+  run_test "$PROFILE" "$REPEAT"
+fi
+
+echo ""
 echo "--------------------------------"
 echo "Test complete."
 

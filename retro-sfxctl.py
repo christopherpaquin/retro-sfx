@@ -34,6 +34,7 @@ def status():
     wopr_vars = "all"
     mainframe_vars = "all"
     aliensterm_vars = "all"
+    modem_vars = "all"
     
     if CONF_FILE.exists():
         with open(CONF_FILE, 'r') as f:
@@ -57,12 +58,14 @@ def status():
                     mainframe_vars = line.split("=", 1)[1].strip().strip('"')
                 elif line.startswith("ALIENSTERM_ENABLED_VARIATIONS="):
                     aliensterm_vars = line.split("=", 1)[1].strip().strip('"')
+                elif line.startswith("MODEM_ENABLED_VARIATIONS="):
+                    modem_vars = line.split("=", 1)[1].strip().strip('"')
     
     print(f"enabled={enabled} profile={profile} output={output} "
           f"random_audio_percent={random_percent} limiter={limiter}")
     print(f"quiet_enabled={quiet_enabled} quiet_start={quiet_start} quiet_end={quiet_end}")
     print(f"wopr_variations={wopr_vars} mainframe_variations={mainframe_vars} "
-          f"aliensterm_variations={aliensterm_vars}")
+          f"aliensterm_variations={aliensterm_vars} modem_variations={modem_vars}")
 
 
 def set_enabled(value: str):
@@ -73,9 +76,9 @@ def set_enabled(value: str):
 
 def set_profile(profile: str):
     """Set sound profile"""
-    if profile not in ["wopr", "mainframe", "aliensterm"]:
+    if profile not in ["wopr", "mainframe", "aliensterm", "modem"]:
         print(f"ERROR: Invalid profile '{profile}'", file=sys.stderr)
-        print("Valid profiles: wopr, mainframe, aliensterm", file=sys.stderr)
+        print("Valid profiles: wopr, mainframe, aliensterm, modem", file=sys.stderr)
         sys.exit(2)
     
     RUNDIR.mkdir(parents=True, exist_ok=True)
@@ -202,9 +205,9 @@ def set_quiet_enabled(enabled: bool):
 
 def set_variations(profile: str, variations: str):
     """Set enabled variations for a profile"""
-    if profile not in ["wopr", "mainframe", "aliensterm"]:
+    if profile not in ["wopr", "mainframe", "aliensterm", "modem"]:
         print(f"ERROR: Invalid profile '{profile}'", file=sys.stderr)
-        print("Valid profiles: wopr, mainframe, aliensterm", file=sys.stderr)
+        print("Valid profiles: wopr, mainframe, aliensterm, modem", file=sys.stderr)
         sys.exit(2)
     
     # Validate variations format
@@ -224,6 +227,54 @@ def set_variations(profile: str, variations: str):
     update_config(key, variations)
 
 
+def set_interval(profile: str, min_minutes: float, max_minutes: float):
+    """Set interval range for a profile (in minutes, 1-100)"""
+    if profile not in ["wopr", "mainframe", "aliensterm", "modem"]:
+        print(f"ERROR: Invalid profile '{profile}'", file=sys.stderr)
+        print("Valid profiles: wopr, mainframe, aliensterm, modem", file=sys.stderr)
+        sys.exit(2)
+    
+    # Validate range
+    if not (1.0 <= min_minutes <= 100.0):
+        print(f"ERROR: Minimum interval must be between 1 and 100 minutes", file=sys.stderr)
+        sys.exit(2)
+    if not (1.0 <= max_minutes <= 100.0):
+        print(f"ERROR: Maximum interval must be between 1 and 100 minutes", file=sys.stderr)
+        sys.exit(2)
+    if min_minutes > max_minutes:
+        print(f"ERROR: Minimum interval must be <= maximum interval", file=sys.stderr)
+        sys.exit(2)
+    
+    key_min = f"{profile.upper()}_INTERVAL_MIN"
+    key_max = f"{profile.upper()}_INTERVAL_MAX"
+    update_config(key_min, str(min_minutes))
+    update_config(key_max, str(max_minutes))
+
+
+def set_beeps(profile: str, min_beeps: int, max_beeps: int):
+    """Set beep count range for a profile (1-20)"""
+    if profile not in ["wopr", "mainframe", "aliensterm", "modem"]:
+        print(f"ERROR: Invalid profile '{profile}'", file=sys.stderr)
+        print("Valid profiles: wopr, mainframe, aliensterm, modem", file=sys.stderr)
+        sys.exit(2)
+    
+    # Validate range
+    if not (1 <= min_beeps <= 20):
+        print(f"ERROR: Minimum beeps must be between 1 and 20", file=sys.stderr)
+        sys.exit(2)
+    if not (1 <= max_beeps <= 20):
+        print(f"ERROR: Maximum beeps must be between 1 and 20", file=sys.stderr)
+        sys.exit(2)
+    if min_beeps > max_beeps:
+        print(f"ERROR: Minimum beeps must be <= maximum beeps", file=sys.stderr)
+        sys.exit(2)
+    
+    key_min = f"{profile.upper()}_BEEPS_MIN"
+    key_max = f"{profile.upper()}_BEEPS_MAX"
+    update_config(key_min, str(min_beeps))
+    update_config(key_max, str(max_beeps))
+
+
 def main():
     """Main CLI entry point"""
     parser = argparse.ArgumentParser(description="Retro SFX Control")
@@ -238,7 +289,7 @@ def main():
     
     # Profile command
     profile_parser = subparsers.add_parser('profile', help='Set sound profile')
-    profile_parser.add_argument('name', choices=['wopr', 'mainframe', 'aliensterm'],
+    profile_parser.add_argument('name', choices=['wopr', 'mainframe', 'aliensterm', 'modem'],
                                help='Profile name')
     
     # Output command
@@ -264,8 +315,35 @@ def main():
     
     # Variations command
     variations_parser = subparsers.add_parser('variations', help='Set enabled sound variations for a profile')
-    variations_parser.add_argument('profile', choices=['wopr', 'mainframe', 'aliensterm'], help='Profile name')
+    variations_parser.add_argument('profile', choices=['wopr', 'mainframe', 'aliensterm', 'modem'], help='Profile name')
     variations_parser.add_argument('variations', help='Variations: "all" or comma-separated like "0,1,2,3"')
+    
+    # Interval command
+    interval_parser = subparsers.add_parser('interval', help='Set interval range between patterns (in minutes, 1-100)')
+    interval_parser.add_argument('profile', choices=['wopr', 'mainframe', 'aliensterm', 'modem'], help='Profile name')
+    interval_parser.add_argument('min_minutes', type=float, help='Minimum interval in minutes (1-100)')
+    interval_parser.add_argument('max_minutes', type=float, help='Maximum interval in minutes (1-100)')
+    
+    # Beeps command
+    beeps_parser = subparsers.add_parser('beeps', help='Set beep count range per pattern (1-20)')
+    beeps_parser.add_argument('profile', choices=['wopr', 'mainframe', 'aliensterm', 'modem'], help='Profile name')
+    beeps_parser.add_argument('min_beeps', type=int, help='Minimum beeps per pattern (1-20)')
+    beeps_parser.add_argument('max_beeps', type=int, help='Maximum beeps per pattern (1-20)')
+    
+    # Sound files commands
+    sounds_parser = subparsers.add_parser('sounds', help='Enable/disable sound file playback')
+    sounds_parser.add_argument('state', choices=['on', 'off'], help='Sound files state')
+    
+    sounds_dir_parser = subparsers.add_parser('sounds-dir', help='Set sounds directory path')
+    sounds_dir_parser.add_argument('directory', help='Path to sounds directory')
+    
+    sounds_dur_parser = subparsers.add_parser('sounds-duration', help='Set sound file playback duration (1-30 seconds)')
+    sounds_dur_parser.add_argument('min_seconds', type=float, help='Minimum duration in seconds (1-30)')
+    sounds_dur_parser.add_argument('max_seconds', type=float, help='Maximum duration in seconds (1-30)')
+    
+    sounds_int_parser = subparsers.add_parser('sounds-interval', help='Set interval between sound file plays (1-100 minutes)')
+    sounds_int_parser.add_argument('min_minutes', type=float, help='Minimum interval in minutes (1-100)')
+    sounds_int_parser.add_argument('max_minutes', type=float, help='Maximum interval in minutes (1-100)')
     
     args = parser.parse_args()
     
@@ -294,6 +372,18 @@ def main():
             set_quiet_enabled(args.state == 'on')
         elif args.command == 'variations':
             set_variations(args.profile, args.variations)
+        elif args.command == 'interval':
+            set_interval(args.profile, args.min_minutes, args.max_minutes)
+        elif args.command == 'beeps':
+            set_beeps(args.profile, args.min_beeps, args.max_beeps)
+        elif args.command == 'sounds':
+            set_sounds_enabled(args.state == 'on')
+        elif args.command == 'sounds-dir':
+            set_sounds_dir(args.directory)
+        elif args.command == 'sounds-duration':
+            set_sounds_duration(args.min_seconds, args.max_seconds)
+        elif args.command == 'sounds-interval':
+            set_sounds_interval(args.min_minutes, args.max_minutes)
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)

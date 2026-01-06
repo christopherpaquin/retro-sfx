@@ -11,9 +11,10 @@ import random
 import subprocess
 import signal
 import shutil
+import hashlib
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 # Paths
 RUNDIR = Path("/run/retro-sfx")
@@ -43,6 +44,32 @@ DEFAULT_CONFIG = {
     "WOPR_ENABLED_VARIATIONS": "all",
     "MAINFRAME_ENABLED_VARIATIONS": "all",
     "ALIENSTERM_ENABLED_VARIATIONS": "all",
+    "MODEM_ENABLED_VARIATIONS": "all",
+    # Interval between patterns (in minutes, min-max range)
+    "WOPR_INTERVAL_MIN": "0.003",      # ~0.2 seconds (0.003 minutes)
+    "WOPR_INTERVAL_MAX": "0.025",      # ~1.5 seconds (0.025 minutes)
+    "MAINFRAME_INTERVAL_MIN": "0.067", # ~4 seconds (0.067 minutes)
+    "MAINFRAME_INTERVAL_MAX": "0.183", # ~11 seconds (0.183 minutes)
+    "ALIENSTERM_INTERVAL_MIN": "0.003", # ~0.2 seconds (0.003 minutes)
+    "ALIENSTERM_INTERVAL_MAX": "0.015", # ~0.9 seconds (0.015 minutes)
+    "MODEM_INTERVAL_MIN": "0.017",     # ~1 second (0.017 minutes)
+    "MODEM_INTERVAL_MAX": "0.067",     # ~4 seconds (0.067 minutes)
+    # Number of beeps per pattern run (min-max range)
+    "WOPR_BEEPS_MIN": "1",
+    "WOPR_BEEPS_MAX": "6",
+    "MAINFRAME_BEEPS_MIN": "1",
+    "MAINFRAME_BEEPS_MAX": "2",
+    "ALIENSTERM_BEEPS_MIN": "1",
+    "ALIENSTERM_BEEPS_MAX": "4",
+    "MODEM_BEEPS_MIN": "1",
+    "MODEM_BEEPS_MAX": "6",
+    # Sound files playback
+    "SOUNDS_ENABLED": "0",  # Enable/disable sound file playback
+    "SOUNDS_DIR": "/usr/local/share/retro-sfx/sounds",  # Directory containing sound files
+    "SOUNDS_DURATION_MIN": "5.0",  # Minimum play duration in seconds
+    "SOUNDS_DURATION_MAX": "30.0",  # Maximum play duration in seconds
+    "SOUNDS_INTERVAL_MIN": "1.0",  # Minimum interval between plays (minutes)
+    "SOUNDS_INTERVAL_MAX": "10.0",  # Maximum interval between plays (minutes)
 }
 
 
@@ -56,6 +83,33 @@ def load_config() -> dict:
                 if line and not line.startswith('#') and '=' in line:
                     key, value = line.split('=', 1)
                     config[key.strip()] = value.strip().strip('"')
+    
+    # Validate and clamp interval values (1 to 100 minutes)
+    for key in config:
+        if key.endswith("_INTERVAL_MIN") or key.endswith("_INTERVAL_MAX"):
+            try:
+                val = float(config[key])
+                if val < 1.0:
+                    config[key] = "1.0"
+                elif val > 100.0:
+                    config[key] = "100.0"
+            except (ValueError, TypeError):
+                # Keep default if invalid
+                pass
+    
+    # Validate beep counts (1 to 20)
+    for key in config:
+        if key.endswith("_BEEPS_MIN") or key.endswith("_BEEPS_MAX"):
+            try:
+                val = int(config[key])
+                if val < 1:
+                    config[key] = "1"
+                elif val > 20:
+                    config[key] = "20"
+            except (ValueError, TypeError):
+                # Keep default if invalid
+                pass
+    
     return config
 
 
@@ -63,7 +117,7 @@ def read_profile() -> str:
     """Read current profile"""
     if PROFILE_FILE.exists():
         profile = PROFILE_FILE.read_text().strip()
-        if profile in ["wopr", "mainframe", "aliensterm"]:
+        if profile in ["wopr", "mainframe", "aliensterm", "modem"]:
             return profile
     return "mainframe"
 
@@ -327,6 +381,266 @@ def play_sound(freq: int, dur_ms: int, config: dict) -> None:
     # mode == "none" means no output available, silently skip
 
 
+def get_sound_files(sounds_dir: str) -> List[str]:
+    """Get list of playable sound files from directory"""
+    sound_extensions = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac']
+    sound_files = []
+    
+    sounds_path = Path(sounds_dir)
+    if not sounds_path.exists() or not sounds_path.is_dir():
+        return []
+    
+    for file_path in sounds_path.iterdir():
+        if file_path.is_file() and file_path.suffix.lower() in sound_extensions:
+            sound_files.append(str(file_path))
+    
+    return sound_files
+
+
+def extract_frequencies_from_audio(file_path: str, duration_seconds: float, num_samples: int = 10) -> List[Tuple[int, int]]:
+    """Extract frequency information from audio file and convert to beep sequence"""
+    # Returns list of (frequency, duration_ms) tuples
+    beeps = []
+    
+    # Use sox to analyze audio and extract frequency information
+    if shutil.which("sox"):
+        try:
+            # Get audio statistics
+            result = subprocess.run(
+                ["sox", file_path, "-n", "stat", "-freq"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            # Try to extract frequency info from stat output
+            # This is a simplified approach - we'll generate representative beeps
+            # based on the file characteristics
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+    
+    # Fallback: Generate a beep sequence based on file characteristics
+    # Use file size and name hash to create consistent but varied patterns
+    file_hash = hashlib.md5(str(file_path).encode()).hexdigest()
+    
+    # Generate 5-15 beeps based on duration
+    num_beeps = max(5, min(15, int(duration_seconds * 2)))
+    segment_duration = int((duration_seconds * 1000) / num_beeps)
+    
+    for i in range(num_beeps):
+        # Use hash to generate consistent but varied frequencies
+        hash_val = int(file_hash[i*2:(i*2)+2], 16) if i*2+2 <= len(file_hash) else 50
+        # Frequency range: 200-2000 Hz
+        freq = 200 + (hash_val * 1800 // 255)
+        # Duration: 50-200ms per beep
+        dur = max(50, min(200, segment_duration + (hash_val % 150)))
+        beeps.append((freq, dur))
+    
+    return beeps
+
+
+def play_sound_file_pcspkr(file_path: str, duration_seconds: float, config: dict) -> bool:
+    """Play sound file through PC speaker by converting to beep sequence"""
+    if not has_pcspkr():
+        return False
+    
+    # Extract frequencies and convert to beeps
+    beeps = extract_frequencies_from_audio(file_path, duration_seconds)
+    
+    if not beeps:
+        return False
+    
+    # Play the beep sequence
+    total_duration = 0
+    for freq, dur_ms in beeps:
+        if total_duration >= duration_seconds * 1000:
+            break
+        play_pcspkr(freq, dur_ms)
+        total_duration += dur_ms
+        # Small pause between beeps
+        time.sleep(0.05)
+    
+    return True
+
+
+def play_sound_file(file_path: str, duration_seconds: float, config: dict) -> bool:
+    """Play a sound file for specified duration"""
+    # Check output mode - if pcspkr, convert to beeps
+    mode = pick_output_mode(config)
+    
+    if mode == "pcspkr":
+        return play_sound_file_pcspkr(file_path, duration_seconds, config)
+    
+    # Otherwise use audio output
+    if not has_audio():
+        # Fallback to PC speaker if audio not available
+        if has_pcspkr():
+            return play_sound_file_pcspkr(file_path, duration_seconds, config)
+        return False
+    
+    device = config.get("AUDIO_DEVICE", "default")
+    if device == "default" or device == "none":
+        device = detect_audio_device() or "default"
+    
+    audio_gain = float(config.get("AUDIO_GAIN", "1.0"))
+    devices_to_try = ["pipewire", device, "default"]
+    
+    # Try different players
+    players = []
+    
+    # Try ffplay (from ffmpeg) - good for most formats
+    if shutil.which("ffplay"):
+        for dev in devices_to_try:
+            try:
+                # Use ffplay with duration limit
+                cmd = [
+                    "ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet",
+                    "-af", f"volume={audio_gain}",
+                    "-t", str(duration_seconds),  # Duration limit
+                    file_path
+                ]
+                # Set audio device via environment if needed
+                env = os.environ.copy()
+                if dev != "default":
+                    env["PULSE_SERVER"] = dev if dev == "pulse" else None
+                
+                subprocess.run(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=int(duration_seconds) + 5,
+                    check=True,
+                    env=env
+                )
+                return True
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+                continue
+    
+    # Try mpg123 for MP3 files
+    if shutil.which("mpg123") and file_path.lower().endswith('.mp3'):
+        for dev in devices_to_try:
+            try:
+                # mpg123 with duration limit
+                cmd = [
+                    "timeout", str(int(duration_seconds) + 1),
+                    "mpg123", "-q", "-g", str(audio_gain * 100),  # Gain as percentage
+                    file_path
+                ]
+                subprocess.run(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=int(duration_seconds) + 5,
+                    check=True
+                )
+                return True
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+                continue
+    
+    # Try paplay (PulseAudio)
+    if shutil.which("paplay"):
+        try:
+            # paplay with duration limit using sox or ffmpeg to trim
+            # For simplicity, just play and let timeout handle it
+            cmd = ["timeout", str(int(duration_seconds) + 1), "paplay", file_path]
+            subprocess.run(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=int(duration_seconds) + 5,
+                check=True
+            )
+            return True
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+    
+    # Try aplay (ALSA) - works for WAV files
+    if shutil.which("aplay") and file_path.lower().endswith('.wav'):
+        for dev in devices_to_try:
+            try:
+                # Convert to WAV first if needed, or use sox
+                if shutil.which("sox"):
+                    # Use sox to convert and play with duration limit
+                    sox_cmd = [
+                        "sox", file_path, "-t", "wav", "-",
+                        "trim", "0", str(duration_seconds),
+                        "vol", str(audio_gain)
+                    ]
+                    aplay_cmd = ["aplay", "-D", dev, "-f", "cd"]
+                    
+                    sox_proc = subprocess.Popen(
+                        sox_cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL
+                    )
+                    subprocess.run(
+                        aplay_cmd,
+                        stdin=sox_proc.stdout,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=int(duration_seconds) + 5,
+                        check=True
+                    )
+                    sox_proc.wait()
+                    return True
+                else:
+                    # Direct aplay with timeout
+                    cmd = ["timeout", str(int(duration_seconds) + 1), "aplay", "-D", dev, file_path]
+                    subprocess.run(
+                        cmd,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=int(duration_seconds) + 5,
+                        check=True
+                    )
+                    return True
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+                continue
+    
+    return False
+
+
+def pattern_soundfiles(config: dict) -> None:
+    """Play random sound file from sounds directory"""
+    if config.get("SOUNDS_ENABLED") != "1":
+        return
+    
+    # Check configured directory first, then local sounds directory, then default
+    sounds_dir = config.get("SOUNDS_DIR", "")
+    if not sounds_dir or sounds_dir == "/usr/local/share/retro-sfx/sounds":
+        # Try local sounds directory (where script is located)
+        local_sounds = Path(__file__).parent / "sounds"
+        if local_sounds.exists() and local_sounds.is_dir():
+            sounds_dir = str(local_sounds)
+        else:
+            # Fallback to configured/default path
+            sounds_dir = config.get("SOUNDS_DIR", "/usr/local/share/retro-sfx/sounds")
+    
+    sound_files = get_sound_files(sounds_dir)
+    
+    if not sound_files:
+        # No sound files found, skip
+        return
+    
+    # Pick random file
+    selected_file = random.choice(sound_files)
+    
+    # Get random duration
+    dur_min = float(config.get("SOUNDS_DURATION_MIN", "5.0"))
+    dur_max = float(config.get("SOUNDS_DURATION_MAX", "30.0"))
+    duration = random.uniform(dur_min, dur_max)
+    duration = min(30.0, max(1.0, duration))  # Clamp to 1-30 seconds
+    
+    # Play the file
+    play_sound_file(selected_file, duration, config)
+    
+    # Variable pause after playback (from config, in minutes, convert to seconds)
+    interval_min = float(config.get("SOUNDS_INTERVAL_MIN", "1.0"))
+    interval_max = float(config.get("SOUNDS_INTERVAL_MAX", "10.0"))
+    pause_seconds = random.uniform(interval_min, interval_max) * 60.0
+    time.sleep(pause_seconds)
+
+
 # Sound patterns
 def get_enabled_variations(config: dict, profile: str) -> list:
     """Get list of enabled variation indices for a profile"""
@@ -372,8 +686,10 @@ def pattern_wopr(config: dict) -> None:
     # Randomly select a base pattern from enabled ones
     pattern = random.choice(available_patterns)
     
-    # Randomly decide how many beeps to play (1-6 beeps)
-    num_beeps = random.randint(1, 6)
+    # Get beep count range from config
+    beeps_min = int(config.get("WOPR_BEEPS_MIN", "1"))
+    beeps_max = int(config.get("WOPR_BEEPS_MAX", "6"))
+    num_beeps = random.randint(beeps_min, beeps_max)
     
     # Create beeps to play - repeat pattern if needed, then randomly sample
     beeps_to_play = []
@@ -401,8 +717,11 @@ def pattern_wopr(config: dict) -> None:
         # Variable pause between beeps (0.05 to 0.4 seconds)
         time.sleep(random.uniform(0.05, 0.4))
     
-    # Variable pause after pattern (0.2 to 1.5 seconds)
-    time.sleep(random.uniform(0.2, 1.5))
+    # Variable pause after pattern (from config, in minutes, convert to seconds)
+    interval_min = float(config.get("WOPR_INTERVAL_MIN", "0.003"))
+    interval_max = float(config.get("WOPR_INTERVAL_MAX", "0.025"))
+    pause_seconds = random.uniform(interval_min, interval_max) * 60.0
+    time.sleep(pause_seconds)
 
 
 def pattern_mainframe(config: dict) -> None:
@@ -429,7 +748,12 @@ def pattern_mainframe(config: dict) -> None:
     ]
     if 0 <= r < len(patterns):
         patterns[r]()
-    time.sleep(random.randint(4, 11))
+    
+    # Variable pause after pattern (from config, in minutes, convert to seconds)
+    interval_min = float(config.get("MAINFRAME_INTERVAL_MIN", "0.067"))
+    interval_max = float(config.get("MAINFRAME_INTERVAL_MAX", "0.183"))
+    pause_seconds = random.uniform(interval_min, interval_max) * 60.0
+    time.sleep(pause_seconds)
 
 
 def pattern_aliensterm(config: dict) -> None:
@@ -456,7 +780,114 @@ def pattern_aliensterm(config: dict) -> None:
     ]
     if 0 <= r < len(patterns):
         patterns[r]()
-    time.sleep(random.uniform(0.2, 0.9))
+    
+    # Variable pause after pattern (from config, in minutes, convert to seconds)
+    interval_min = float(config.get("ALIENSTERM_INTERVAL_MIN", "0.003"))
+    interval_max = float(config.get("ALIENSTERM_INTERVAL_MAX", "0.015"))
+    pause_seconds = random.uniform(interval_min, interval_max) * 60.0
+    time.sleep(pause_seconds)
+
+
+def pattern_modem(config: dict) -> None:
+    """Dial-up modem profile - classic 56k modem connection sounds"""
+    # Get enabled variations
+    enabled = get_enabled_variations(config, "modem")
+    if not enabled:
+        enabled = list(range(10))
+    
+    # Select from enabled variations only
+    r = random.choice(enabled)
+    
+    # Dial-up modem sound patterns
+    # These simulate various stages of modem connection
+    patterns = [
+        # Variation 0: Dial tone + dialing sequence
+        lambda: [
+            play_sound(350, 100, config),  # Dial tone low
+            play_sound(440, 100, config),  # Dial tone high
+            time.sleep(0.1),
+            play_sound(697, 50, config),  # DTMF 1
+            play_sound(770, 50, config),  # DTMF 4
+            play_sound(852, 50, config),  # DTMF 7
+        ],
+        # Variation 1: Handshake sequence (initial negotiation)
+        lambda: [
+            play_sound(300, 80, config),
+            play_sound(600, 60, config),
+            play_sound(900, 50, config),
+            play_sound(1200, 40, config),
+            play_sound(1500, 30, config),
+        ],
+        # Variation 2: Connection negotiation (v.90/v.92 style)
+        lambda: [
+            play_sound(400, 70, config),
+            play_sound(800, 60, config),
+            play_sound(1200, 50, config),
+            play_sound(1600, 40, config),
+            play_sound(2000, 30, config),
+        ],
+        # Variation 3: Data transmission (rapid beeps)
+        lambda: [
+            play_sound(1000, 20, config),
+            play_sound(1200, 20, config),
+            play_sound(1400, 20, config),
+            play_sound(1600, 20, config),
+            play_sound(1800, 20, config),
+        ],
+        # Variation 4: Long connection sequence
+        lambda: [
+            play_sound(350, 150, config),
+            play_sound(440, 150, config),
+            time.sleep(0.2),
+            play_sound(600, 100, config),
+            play_sound(900, 80, config),
+            play_sound(1200, 60, config),
+        ],
+        # Variation 5: Quick handshake
+        lambda: [
+            play_sound(500, 40, config),
+            play_sound(1000, 40, config),
+            play_sound(1500, 40, config),
+        ],
+        # Variation 6: DTMF dialing sequence
+        lambda: [
+            play_sound(697, 60, config),  # 1
+            play_sound(770, 60, config),  # 4
+            play_sound(852, 60, config),  # 7
+            play_sound(941, 60, config),  # *
+            play_sound(1209, 60, config), # 3
+        ],
+        # Variation 7: Modem carrier tone
+        lambda: [
+            play_sound(1800, 200, config),
+            play_sound(2100, 150, config),
+            play_sound(2400, 100, config),
+        ],
+        # Variation 8: Connection established (data flow)
+        lambda: [
+            play_sound(800, 30, config),
+            play_sound(1000, 30, config),
+            play_sound(1200, 30, config),
+            play_sound(1400, 30, config),
+            play_sound(1600, 30, config),
+            play_sound(1800, 30, config),
+        ],
+        # Variation 9: Failed connection attempt
+        lambda: [
+            play_sound(400, 100, config),
+            play_sound(300, 100, config),
+            play_sound(200, 150, config),
+        ],
+    ]
+    
+    if 0 <= r < len(patterns):
+        patterns[r]()
+    
+    # Variable pause after pattern (from config, in minutes, convert to seconds)
+    interval_min = float(config.get("MODEM_INTERVAL_MIN", "0.017"))
+    interval_max = float(config.get("MODEM_INTERVAL_MAX", "0.067"))
+    pause_seconds = random.uniform(interval_min, interval_max) * 60.0
+    time.sleep(pause_seconds)
 
 
 def main():
@@ -492,6 +923,13 @@ def main():
             time.sleep(2)
             continue
         
+        # Check if sound files should be played (can run alongside other profiles)
+        if config.get("SOUNDS_ENABLED") == "1":
+            # Random chance to play sound file (10% chance each loop)
+            if random.randint(0, 9) == 0:
+                pattern_soundfiles(config)
+                continue  # Skip regular pattern this iteration
+        
         profile = read_profile()
         
         if profile == "wopr":
@@ -500,6 +938,8 @@ def main():
             pattern_mainframe(config)
         elif profile == "aliensterm":
             pattern_aliensterm(config)
+        elif profile == "modem":
+            pattern_modem(config)
 
 
 if __name__ == "__main__":
